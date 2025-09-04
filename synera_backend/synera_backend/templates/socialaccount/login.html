@@ -1,0 +1,61 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Google Sign In</title>
+    <!-- MUI CDN -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@mui/material@5.15.0/umd/material-ui.production.min.css"
+    />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap"
+    />
+    <style>
+      body {
+        font-family: 'Roboto', sans-serif;
+        background-color: #f5f5f5;
+        margin: 0;
+        padding: 0;
+      }
+      .mui-box {
+        max-width: 500px;
+        margin: 100px auto;
+        padding: 40px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        text-align: center;
+      }
+      .mui-btn {
+        background-color: #1976d2;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        font-size: 16px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-top: 20px;
+      }
+      .mui-btn:hover {
+        background-color: #1565c0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mui-box">
+      <h2>Continue with Google</h2>
+      <p>
+        You are about to sign in using your Google account.<br />
+        Please confirm to proceed.
+      </p>
+      <form method="post" action="{% url 'socialaccount_login' %}">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button type="submit" class="mui-btn">Continue</button>
+      </form>
+    </div>
+  </body>
+</html>
