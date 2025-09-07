@@ -30,9 +30,7 @@ SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
 
 
 def get_google_client_config():
-    """
-    Returns Google OAuth client configuration
-    """
+    """Return Google OAuth client configuration"""
     return {
         "web": {
             "client_id": settings.GOOGLE_OAUTH2_CLIENT_ID,
@@ -48,9 +46,6 @@ def get_google_client_config():
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def gmail_auth_init(request):
-    """
-    Redirects user to Google OAuth consent page
-    """
     flow = Flow.from_client_config(get_google_client_config(), scopes=SCOPES)
     flow.redirect_uri = settings.GOOGLE_OAUTH2_REDIRECT_URI
     auth_url, state = flow.authorization_url(access_type='offline', prompt='consent')
@@ -59,27 +54,21 @@ def gmail_auth_init(request):
 
 
 @api_view(['GET'])
-@permission_classes([])  # no authentication needed for the callback
+@permission_classes([AllowAny])
 def gmail_auth_callback(request):
-    """
-    Handles Google OAuth callback and stores credentials in session,
-    then redirects back to the frontend React app with a query param.
-    """
     state = request.session.get('oauth_state')
     flow = Flow.from_client_config(get_google_client_config(), scopes=SCOPES, state=state)
     flow.redirect_uri = settings.GOOGLE_OAUTH2_REDIRECT_URI
     flow.fetch_token(authorization_response=request.build_absolute_uri())
 
-    credentials = flow.credentials
-    # Save credentials in session
-    request.session['gmail_token'] = credentials.token
-    request.session['refresh_token'] = credentials.refresh_token
-    request.session['token_uri'] = credentials.token_uri
-    request.session['client_id'] = credentials.client_id
-    request.session['client_secret'] = credentials.client_secret
-    request.session['scopes'] = credentials.scopes
+    creds = flow.credentials
+    request.session['gmail_token'] = creds.token
+    request.session['refresh_token'] = creds.refresh_token
+    request.session['token_uri'] = creds.token_uri
+    request.session['client_id'] = creds.client_id
+    request.session['client_secret'] = creds.client_secret
+    request.session['scopes'] = creds.scopes
 
-    # Redirect back to React app with a query parameter indicating success
     frontend_url = getattr(settings, "FRONTEND_URL", "http://localhost:3000")
     return redirect(f"{frontend_url}/dashboard?gmail=connected")
 
@@ -87,11 +76,9 @@ def gmail_auth_callback(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def gmail_conversations(request):
-    """
-    Fetches last 10 emails from Gmail
-    """
+    """Fetch last 10 emails from Gmail for logged-in user"""
     try:
-        credentials = Credentials(
+        creds = Credentials(
             token=request.session.get('gmail_token'),
             refresh_token=request.session.get('refresh_token'),
             token_uri=request.session.get('token_uri'),
@@ -99,18 +86,16 @@ def gmail_conversations(request):
             client_secret=request.session.get('client_secret'),
             scopes=request.session.get('scopes'),
         )
-
-        service = build('gmail', 'v1', credentials=credentials)
+        service = build('gmail', 'v1', credentials=creds)
         results = service.users().messages().list(userId='me', maxResults=10).execute()
         messages = results.get('messages', [])
 
-        conversation_snippets = []
+        snippets = []
         for msg in messages:
             full_msg = service.users().messages().get(userId='me', id=msg['id'], format='metadata').execute()
-            snippet = full_msg.get('snippet', '')
-            conversation_snippets.append({'id': msg['id'], 'snippet': snippet})
+            snippets.append({'id': msg['id'], 'snippet': full_msg.get('snippet', '')})
 
-        return Response({'messages': conversation_snippets})
+        return Response({'messages': snippets})
 
     except Exception as e:
         return Response({'error': str(e)}, status=500)
@@ -120,28 +105,45 @@ def gmail_conversations(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def high_priority_leads(request):
-    """
-    Returns leads with score >= 80 excluding won/lost
-    """
-    high_priority = Lead.objects.filter(score__gte=80).exclude(status__in=['won', 'lost'])
-    serializer = LeadSerializer(high_priority, many=True)
+    """Leads with score >= 80 for current user, excluding won/lost"""
+    leads = Lead.objects.filter(
+        customer__owner=request.user,
+        score__gte=80
+    ).exclude(status__in=['won', 'lost'])
+    serializer = LeadSerializer(leads, many=True)
     return Response(serializer.data)
 
 
+# ---------------- ViewSets ---------------- #
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = Product.objects.all().order_by('-created_at')
     serializer_class = ProductSerializer
     permission_classes = [IsAuthenticated]
+    queryset = Product.objects.all().order_by('-created_at')
+
+    def get_queryset(self):
+        # Optional: filter per user if products belong to a user
+        return self.queryset
 
 
 class CustomerViewSet(viewsets.ModelViewSet):
-    queryset = Customer.objects.all().order_by('-created_at')
     serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Customer.objects.all().order_by('-created_at')
+
+    def get_queryset(self):
+        return self.queryset.filter(owner=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(owner=self.request.user)
 
 
 class LeadViewSet(viewsets.ModelViewSet):
-    queryset = Lead.objects.all().order_by('-created_at')
     serializer_class = LeadSerializer
+    permission_classes = [IsAuthenticated]
+    queryset = Lead.objects.all().order_by('-created_at')
+
+    def get_queryset(self):
+        return self.queryset.filter(customer__owner=self.request.user)
 
     def perform_create(self, serializer):
         serializer.save(updated_by=self.request.user)
@@ -150,6 +152,7 @@ class LeadViewSet(viewsets.ModelViewSet):
         serializer.save(updated_by=self.request.user)
 
 
+# ---------------- Current User ---------------- #
 class CurrentUserView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -158,6 +161,7 @@ class CurrentUserView(APIView):
         return Response(serializer.data)
 
 
+# ---------------- User Registration ---------------- #
 class RegistrationView(generics.CreateAPIView):
     serializer_class = UserRegistrationSerializer
     permission_classes = [AllowAny]
@@ -167,18 +171,17 @@ class RegistrationView(generics.CreateAPIView):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def test_fetch_emails(request):
+    """Fetch and parse last 5 emails from Gmail"""
     try:
-        service = get_gmail_service(request)  # pass request
+        service = get_gmail_service(request)
         results = service.users().messages().list(userId='me', labelIds=['INBOX'], maxResults=5).execute()
         messages = results.get('messages', [])
 
         emails = []
         for msg in messages:
             msg_data = service.users().messages().get(userId='me', id=msg['id']).execute()
-            parsed = parse_message(msg_data)
-            emails.append(parsed)
+            emails.append(parse_message(msg_data))
 
         return JsonResponse(emails, safe=False)
-
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=500)

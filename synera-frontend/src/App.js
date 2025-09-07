@@ -8,7 +8,7 @@ import { AuthProvider } from "./context/AuthContext";
 
 // Components
 import Navbar from "./components/Navbar";
-import Landing from "./components/Landing/Landing";
+import Landing from "./components/Landing"; 
 import Login from "./components/Login";
 import Signup from "./components/Signup";
 import Unauthorized from "./components/Unauthorized";
@@ -23,6 +23,10 @@ import EditLead from "./components/EditLead";
 import HighPriorityLeads from "./components/HighPriorityLeads";
 import Products from "./components/Products";
 import GmailAuth from "./components/GmailAuth";
+import ForgotPassword from "./components/ForgotPassword";
+import ResetPassword from "./components/ResetPassword";
+
+
 
 function App() {
   return (
@@ -36,7 +40,7 @@ function App() {
 
         <div style={{ padding: "20px" }}>
           <Routes>
-            {/* Landing page as default */}
+            {/* Landing page */}
             <Route path="/" element={<Landing />} />
             <Route path="/landing" element={<Landing />} />
 
@@ -137,6 +141,10 @@ function App() {
 
             {/* Catch-all route */}
             <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password/:uid/:token" element={<ResetPassword />} />
+
+
           </Routes>
         </div>
       </Router>

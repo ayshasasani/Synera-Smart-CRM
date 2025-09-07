@@ -3,7 +3,7 @@ import axios from "axios";
 
 // Base URL for Django backend
 const API = axios.create({
-  baseURL: "http://127.0.0.1:8000/api/", // make sure trailing slash matches Django
+  baseURL: "http://127.0.0.1:8000/api/", 
   withCredentials: true, // important for Gmail session
 
 });

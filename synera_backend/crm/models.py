@@ -1,15 +1,18 @@
 from django.db import models
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from textblob import TextBlob  # pip install textblob
 from .ml.utils import calculate_lead_score  # ML scoring function
+
+User = get_user_model()
 
 
 # -----------------------------
 # Customer
 # -----------------------------
 class Customer(models.Model):
+    owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='customers')
     name = models.CharField(max_length=255)
-    email = models.EmailField(unique=True)
+    email = models.EmailField()
     phone = models.CharField(max_length=15, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     company = models.CharField(max_length=255, blank=True, null=True)
@@ -18,6 +21,7 @@ class Customer(models.Model):
 
     class Meta:
         ordering = ['-created_at']
+        unique_together = ('owner', 'email')  # Each user can have same emails independently
 
     def __str__(self):
         return self.name
@@ -85,6 +89,7 @@ class Lead(models.Model):
             self.sentiment_score = 0.0
 
     def save(self, *args, **kwargs):
+        """Analyze sentiment and calculate lead score before saving"""
         self.analyze_sentiment()
         try:
             self.score = calculate_lead_score(self)

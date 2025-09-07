@@ -1,8 +1,10 @@
 from rest_framework import serializers
-from django.contrib.auth.models import User
+from django.contrib.auth import get_user_model
 from dj_rest_auth.registration.serializers import RegisterSerializer
 from .models import Customer, Lead, Profile, Product
 from .ml.utils import calculate_lead_score
+
+User = get_user_model()
 
 
 # -----------------------------
@@ -35,8 +37,15 @@ class LeadSerializer(serializers.ModelSerializer):
     updated_at = serializers.DateTimeField(read_only=True)
 
     def get_score(self, obj):
-        # Dynamically calculate lead score
+        """Calculate lead score dynamically"""
         return calculate_lead_score(obj)
+
+    def validate_customer_id(self, value):
+        """Ensure the selected customer belongs to the current user"""
+        request = self.context.get('request')
+        if request and value.owner != request.user:
+            raise serializers.ValidationError("You cannot assign a lead to this customer.")
+        return value
 
     class Meta:
         model = Lead
@@ -86,6 +95,7 @@ class UserSerializer(serializers.ModelSerializer):
 # User Registration Serializer
 # -----------------------------
 class UserRegistrationSerializer(RegisterSerializer):
+    # Required fields
     username = serializers.CharField(required=True)
     email = serializers.EmailField(required=True)
     password1 = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
@@ -100,11 +110,13 @@ class UserRegistrationSerializer(RegisterSerializer):
     role = serializers.ChoiceField(choices=Profile.ROLE_CHOICES, default=Profile.ROLE_SALES)
 
     def validate(self, data):
+        """Ensure password1 and password2 match"""
         if data['password1'] != data['password2']:
             raise serializers.ValidationError({"password": "Password fields didn't match."})
         return data
 
     def get_cleaned_data(self):
+        """Return validated data including profile fields"""
         return {
             'username': self.validated_data.get('username', ''),
             'email': self.validated_data.get('email', ''),
@@ -118,10 +130,10 @@ class UserRegistrationSerializer(RegisterSerializer):
         }
 
     def save(self, request):
+        """Create the User and associated Profile"""
         user = super().save(request)
         profile_data = self.get_cleaned_data()
 
-        # Create or update Profile
         Profile.objects.update_or_create(
             user=user,
             defaults={
